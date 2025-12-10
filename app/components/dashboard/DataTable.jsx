@@ -402,7 +402,7 @@ export default function DistributorTablePage() {
                     className="bg-[#f56219] text-white px-5 py-2 rounded-md font-medium 
               hover:bg-[#bd460a] transition-colors cursor-pointer"
                   >
-                    Download All Images
+                    Download All Image
                   </button>
                 </div>
               )}
