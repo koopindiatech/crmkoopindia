@@ -41,6 +41,71 @@ const Services = () => {
   const [showFilter, setShowFilter] = useState(false);
   const [allClients, setAllClients] = useState([]);
   const [role, setRole] = useState("");
+  // Prospect Delivery Popup
+  const [showProspectPopup, setShowProspectPopup] = useState(false);
+  const [selectedClient, setSelectedClient] = useState(null);
+
+  // Prospect Form fields
+  const [year, setYear] = useState("");
+  const [month, setMonth] = useState("");
+  const [shared, setShared] = useState("");
+  const [accepted, setAccepted] = useState("");
+  const [notes, setNotes] = useState("");
+
+  // All entries
+  const [prospectEntries, setProspectEntries] = useState([]);
+
+  useEffect(() => {
+    if (!selectedClient?.docId) return;
+
+    const load = async () => {
+      const snap = await getDocs(
+        collection(db, "clients", selectedClient.docId, "prospects")
+      );
+
+      const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setProspectEntries(arr);
+    };
+
+    load();
+  }, [selectedClient]);
+
+  const saveProspect = async () => {
+    if (!year || !month) {
+      toast.error("Year & Month required!");
+      return;
+    }
+
+    const refColl = collection(
+      db,
+      "clients",
+      selectedClient.docId,
+      "prospects"
+    );
+
+    await setDoc(doc(refColl), {
+      year,
+      month,
+      shared,
+      accepted,
+      notes,
+      createdAt: Date.now(),
+    });
+
+    toast.success("Prospect Saved!");
+
+    setProspectEntries((prev) => [
+      ...prev,
+      { year, month, shared, accepted, notes },
+    ]);
+
+    // Reset
+    setYear("");
+    setMonth("");
+    setShared("");
+    setAccepted("");
+    setNotes("");
+  };
 
   const [formData, setFormData] = useState({
     contactPerson: "",
@@ -292,56 +357,65 @@ const Services = () => {
   const columns = useMemo(
     () => [
       {
-  Header: () => (
-    <div className="flex items-center gap-1">
-      <input
-        type="checkbox"
-        checked={
-          selectedRows.length > 0 &&
-          selectedRows.length === filteredData.length
-        }
-        onChange={(e) => {
-          if (e.target.checked) {
-            setSelectedRows(filteredData.map((c) => c.docId));
-          } else {
-            setSelectedRows([]);
-          }
-        }}
-      />
-      <span className="text-xs font-semibold">Select</span>
-    </div>
-  ),
-  accessor: "select",
-  disableSortBy: true,
+        Header: () => (
+          <div className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              checked={
+                selectedRows.length > 0 &&
+                selectedRows.length === filteredData.length
+              }
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedRows(filteredData.map((c) => c.docId));
+                } else {
+                  setSelectedRows([]);
+                }
+              }}
+            />
+            <span className="text-xs font-semibold">Select</span>
+          </div>
+        ),
+        accessor: "select",
+        disableSortBy: true,
 
-  Cell: ({ row }) => {
-    const id = row.original.docId;
+        Cell: ({ row }) => {
+          const id = row.original.docId;
 
-    return (
-      <input
-        type="checkbox"
-        checked={selectedRows.includes(id)}
-        onChange={() => {
-          setSelectedRows((prev) =>
-            prev.includes(id)
-              ? prev.filter((x) => x !== id)
-              : [...prev, id]
+          return (
+            <input
+              type="checkbox"
+              checked={selectedRows.includes(id)}
+              onChange={() => {
+                setSelectedRows((prev) =>
+                  prev.includes(id)
+                    ? prev.filter((x) => x !== id)
+                    : [...prev, id]
+                );
+              }}
+            />
           );
-        }}
-      />
-    );
-  },
+        },
 
-  width: 50,
-},
+        width: 50,
+      },
 
       {
         Header: "Profile ID",
         accessor: "docId",
-        Cell: ({ value }) => (
-          <button className="text-blue-600 font-medium">{value}</button>
+        Cell: ({ row }) => (
+          <button
+            className="text-blue-600 font-medium underline cursor-pointer"
+            onClick={() => {
+              setSelectedClient(row.original);
+              setShowProspectPopup(true);
+            }}
+          >
+            {row.original.docId}
+          </button>
         ),
       },
+
       { Header: "Company Name", accessor: "companyName" },
       { Header: "Brand Name", accessor: "brandName" },
       { Header: "Contact Person", accessor: "contactPerson" },
@@ -412,7 +486,7 @@ const Services = () => {
       //   },
       // },
     ],
-    []
+    [selectedRows, filteredData]
   );
 
   const generateUniqueClientId = async () => {
@@ -1039,7 +1113,7 @@ const Services = () => {
                     checked={visibleColumns[col.accessor] || false}
                     onChange={() => handleToggleColumn(col.accessor)}
                   />
-                  {col.Header}
+                  {typeof col.Header === "function" ? col.Header() : col.Header}
                 </label>
               ))}
             </div>
@@ -1172,6 +1246,224 @@ const Services = () => {
                   <strong>Email:</strong> {selectedImage.details.email}
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showProspectPopup && (
+        <div className="fixed top-0 right-0 h-full w-[750px] bg-white shadow-xl border-l p-5 z-9999 overflow-y-auto">
+          {/* Header */}
+          <div className="flex justify-between items-center border-b pb-4 mb-5">
+            <h2 className="text-xl font-semibold text-gray-800">
+              Prospect Delivery – {selectedClient?.docId}
+            </h2>
+
+            <button
+              className="text-red-500 text-2xl hover:text-red-600 transition cursor-pointer"
+              onClick={() => setShowProspectPopup(false)}
+            >
+              ✖
+            </button>
+          </div>
+
+          {/* Prospect Sheet */}
+          <div className="mb-7">
+            <h3 className="text-lg font-semibold mb-3 text-gray-800">
+              Prospect Sheet
+            </h3>
+
+            <div className="space-y-3">
+              {/* Input */}
+              <input
+                type="text"
+                placeholder="Paste Google Sheet link..."
+                className="border border-gray-300 p-3 rounded-lg w-full text-sm 
+                 focus:ring-2 focus:ring-orange-500 focus:border-orange-500
+                 transition outline-none"
+                value={selectedClient?.prospectSheet || ""}
+                onChange={(e) =>
+                  setDoc(
+                    doc(db, "clients", selectedClient.docId),
+                    { prospectSheet: e.target.value },
+                    { merge: true }
+                  )
+                }
+              />
+
+              {/* Open Button */}
+              {selectedClient?.prospectSheet && (
+                <a
+                  href={selectedClient.prospectSheet}
+                  target="_blank"
+                  className="inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 
+                   text-white px-4 py-2 rounded-lg text-sm shadow-sm transition"
+                >
+                  <span>Open Sheet</span>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M14 3h7v7m0-7L10 14"></path>
+                    <path d="M5 5v14h14"></path>
+                  </svg>
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Prospect Delivery Form */}
+          <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm space-y-4">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">
+              Prospect Delivery
+            </h3>
+
+            {/* YEAR + MONTH INPUTS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  Year <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter Year (e.g. 2025)"
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm 
+        focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  Month <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Enter Month (e.g. January)"
+                  value={month}
+                  onChange={(e) => setMonth(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm 
+        focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* PROSPECT SHARED + ACCEPTED */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  Prospect Shared
+                </label>
+                <input
+                  type="number"
+                  placeholder="e.g. 20"
+                  value={shared}
+                  onChange={(e) => setShared(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm 
+        focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  Prospect Accepted
+                </label>
+                <input
+                  type="number"
+                  placeholder="e.g. 15"
+                  value={accepted}
+                  onChange={(e) => setAccepted(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm 
+        focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* NOTES */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Notes (optional)
+              </label>
+              <textarea
+                placeholder="Add notes..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="border border-gray-300 rounded-md px-3 py-2 w-full text-sm h-20 
+      focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+              />
+            </div>
+
+            {/* SUBMIT BUTTON */}
+            <button
+              onClick={saveProspect}
+              className="bg-orange-600 hover:bg-orange-700 active:scale-[0.98] transition 
+    text-white px-4 py-2.5 rounded-md w-full font-medium text-sm shadow-sm cursor-pointer"
+            >
+              Add Delivery
+            </button>
+          </div>
+
+          <h3 className="font-semibold mt-6 mb-3 text-lg text-gray-800">
+            Delivery History
+          </h3>
+
+          <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white">
+            {/* Header Row */}
+            <div
+              className="grid grid-cols-5 bg-gray-50 px-5 py-3 
+                  font-semibold text-gray-700 text-sm border-b"
+            >
+              <span>YEAR</span>
+              <span>MONTH</span>
+              <span>PROSPECTS</span>
+              <span>ACCEPTED</span>
+              <span>NOTES</span>
+            </div>
+
+            {/* Table Rows */}
+            <div className="max-h-64 overflow-y-auto divide-y divide-gray-200">
+              {prospectEntries.length === 0 ? (
+                <div className="p-5 text-gray-500 text-sm">
+                  No delivery records available.
+                </div>
+              ) : (
+                prospectEntries.map((item, index) => (
+                  <div
+                    key={index}
+                    className="grid grid-cols-5 px-5 py-3 text-sm items-center
+                     hover:bg-gray-50 transition-colors"
+                  >
+                    {/* YEAR */}
+                    <span className="font-medium text-gray-900">
+                      {item.year}
+                    </span>
+
+                    {/* MONTH */}
+                    <span className="capitalize text-gray-900">
+                      {item.month}
+                    </span>
+
+                    {/* PROSPECTS */}
+                    <span className="font-semibold text-gray-800">
+                      {item.shared || "-"}
+                    </span>
+
+                    {/* ACCEPTED */}
+                    <span className="font-semibold text-gray-800">
+                      {item.accepted || "-"}
+                    </span>
+
+                    {/* NOTES */}
+                    <span className="text-gray-700 truncate">
+                      {item.notes?.trim() ? item.notes : "-"}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
