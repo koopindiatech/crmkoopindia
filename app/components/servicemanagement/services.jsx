@@ -974,7 +974,7 @@ const Services = () => {
                 {/* Sales Amount */}
                 <div className="mb-1">
                   <label className="block text-gray-700 font-semibold mb-2">
-                    Sales Amount (with GST 18%):
+                    Sales Amount:
                   </label>
                   <input
                     type="number"
