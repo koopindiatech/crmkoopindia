@@ -57,7 +57,7 @@ export default function CRMHeader({ onModuleChange, selected }) {
             }}
           >
             <img
-              src="/flatLogo.png"
+              src="/flatlogoa.png"
               alt="logo"
               className="h-[35px] w-auto select-none cursor-pointer"
             />
@@ -114,8 +114,8 @@ export default function CRMHeader({ onModuleChange, selected }) {
               setShowSidebar(false);
             }}
           >
-            <img src="/distributor.png" alt="distributor icon" className="h-5 w-5"/>
-            <span>Distributor Management</span>
+            <img src="/leads.png" alt="Leads icon" className="h-5 w-5"/>
+            <span>Enquiries Management</span>
           </li>
 
 
@@ -123,12 +123,12 @@ export default function CRMHeader({ onModuleChange, selected }) {
           <li
             className="flex items-center gap-4 p-3 cursor-pointer hover:bg-gray-300 border-b border-gray-300 hover:border-gray-400 transition-all"
             onClick={() => {
-              onModuleChange("service-management");
+              onModuleChange("blog");
               setShowSidebar(false);
             }}
           >
-            <img src="/service.png" alt="distributor icon" className="h-5 w-5"/>
-            <span>Service Management</span>
+            <img src="/blog.png" alt="blog icon" className="h-5 w-5"/>
+            <span>Blog Section</span>
           </li>
 
           {/* Manage Users */}
@@ -149,7 +149,7 @@ export default function CRMHeader({ onModuleChange, selected }) {
         {/* bottom logo */}
         <div className="absolute bottom-4 left-0 w-full flex justify-center">
           <img
-            src="/flatLogo.png"
+            src="/flatlogoa.png"
             alt="iClickDistributor Logo"
             className=" h-40px w-auto"
           />

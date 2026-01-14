@@ -54,7 +54,7 @@ export default function DistributorLogin() {
               expandico<span className="text-red-500">|</span>One
             </h1>
              <h2 className="text-xl font-semibold text-gray-700 mt-4">
-              Welcome to 1Clickdistributors
+              Welcome to Koop India
             </h2>
           </div>
 

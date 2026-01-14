@@ -3,7 +3,7 @@ import { useState } from "react";
 import ProtectedRoute from "./ProtectedRoute";
 import CRMHeader from "../components/ui/Header";
 import DataTable from "../components/dashboard/DataTable";
-import Service from "../components/servicemanagement/services";
+import Blog from "../components/blog/blog";
 import ManageUser from "../components/manageusers/manageUsers";
 
 export default function DashboardPage() {
@@ -23,7 +23,7 @@ export default function DashboardPage() {
           {module === "dashboard" && <DataTable />}
 
           {/* service management content*/}
-          {module === "service-management" && <Service />}
+          {module === "blog" && <Blog />}
 
           {/* manage users content */}
           {module === "manage-users" && <ManageUser />}

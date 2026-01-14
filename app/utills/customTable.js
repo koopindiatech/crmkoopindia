@@ -29,7 +29,14 @@ const HighlightText = ({ text, highlight }) => {
   );
 };
 
-const CustomTable = ({ columns, data, searchValue, loading, selectedRows, setSelectedRows }) => {
+const CustomTable = ({
+  columns,
+  data,
+  searchValue,
+  loading,
+  selectedRows,
+  setSelectedRows,
+}) => {
   const tableData = useMemo(() => data || [], [data]);
 
   const tableInstance = useTable(
@@ -149,14 +156,20 @@ const CustomTable = ({ columns, data, searchValue, loading, selectedRows, setSel
                           className="p-2 py-1.5 text-gray-900 border border-gray-200 whitespace-nowrap font-inter text-xs"
                         >
                           {cell.column.id === "select" ? (
-                          cell.render("Cell")
-                        ) : cell.column.id === "createdAt" ? (
-                          cell.value?.split(" ")[0]
-                        ) : cell.column.id === "docId" ||
-                          cell.column.id === "images" ||
-                          cell.column.id === "serviceStatus" ? (
-                          cell.render("Cell")
-                        ) : (
+                            cell.render("Cell")
+                          ) : cell.column.id === "createdAt" ? (
+                            cell.value?.toDate ? (
+                              cell.value.toDate().toLocaleDateString()
+                            ) : typeof cell.value === "string" ? (
+                              cell.value.split(" ")[0]
+                            ) : (
+                              ""
+                            )
+                          ) : cell.column.id === "docId" ||
+                            cell.column.id === "images" ||
+                            cell.column.id === "serviceStatus" ? (
+                            cell.render("Cell")
+                          ) : (
                             <HighlightText
                               text={String(cell.value ?? "")}
                               highlight={searchValue}
