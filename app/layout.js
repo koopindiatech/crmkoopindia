@@ -4,8 +4,8 @@ import { Toaster } from "react-hot-toast";
 
 
 export const metadata = {
-  title: "expand.1clickdistributors.com",
-  description: "Internal tool for 1Clickdistributors",
+  title: "crm.koopindia.com",
+  description: "Internal tool for Koop India",
 };
 
 export default function RootLayout({ children }) {
