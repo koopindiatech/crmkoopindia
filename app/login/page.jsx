@@ -51,7 +51,7 @@ export default function DistributorLogin() {
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-800 mb-2">
-              expandico<span className="text-red-500">|</span>One
+              Koop<span className="text-red-500">|</span>India
             </h1>
              <h2 className="text-xl font-semibold text-gray-700 mt-4">
               Welcome to Koop India
