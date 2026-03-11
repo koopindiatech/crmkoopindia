@@ -39,9 +39,25 @@ export default function DistributorTablePage() {
     try {
       const snapshot = await getDocs(collection(db, "enquiries"));
       const list = snapshot.docs.map((d) => ({ docId: d.id, ...d.data() }));
-      list.sort(
-        (a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0),
-      );
+
+      // ✅ Fixed sort — handles Firestore Timestamp, ISO string, and DD/MM/YYYY
+      list.sort((a, b) => {
+        const getTime = (val) => {
+          if (!val) return 0;
+          if (val?.seconds) return val.seconds * 1000; // Firestore Timestamp
+          if (typeof val === "string") {
+            // Try DD/MM/YYYY format
+            const ddmmyyyy = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (ddmmyyyy) {
+              return new Date(`${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`).getTime();
+            }
+            return new Date(val).getTime(); // ISO string or other parseable
+          }
+          return 0;
+        };
+        return getTime(b.createdAt) - getTime(a.createdAt);
+      });
+
       setData(list);
     } catch (err) {
       console.error(err);
@@ -124,6 +140,7 @@ export default function DistributorTablePage() {
         ...selectedEnquiry,
         comments: [...(selectedEnquiry.comments || []), commentEntry],
         followUpDate: followUpDate || selectedEnquiry.followUpDate || null,
+        lastUpdatedAt: new Date().toISOString(),
       };
       setSelectedEnquiry(updatedEnquiry);
       setData((prev) =>
@@ -153,7 +170,7 @@ export default function DistributorTablePage() {
       `}</style>
 
       <div className="p-4 bg-white min-h-screen">
-        {/* Search bar — same as before */}
+        {/* Search bar */}
         <div className="mb-4">
           <div className="relative inline-block">
             <input
@@ -184,7 +201,7 @@ export default function DistributorTablePage() {
                     <th className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">
                       Created At
                     </th>
-                     <th className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">
+                    <th className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">
                       Last Updated
                     </th>
                     <th className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">
@@ -208,14 +225,13 @@ export default function DistributorTablePage() {
                     <th className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap">
                       Service
                     </th>
-                   
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedData.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={9}
+                        colSpan={10}
                         className="text-center py-12 text-gray-500 text-xs"
                       >
                         No enquiries found
@@ -231,10 +247,10 @@ export default function DistributorTablePage() {
                         <td className="px-4 py-1.5 whitespace-nowrap text-[#2563eb] font-medium text-xs">
                           {row.docId}
                         </td>
-                         <td className="px-4 py-1.5 whitespace-nowrap text-gray-600 text-xs">
+                        <td className="px-4 py-1.5 whitespace-nowrap text-gray-600 text-xs">
                           {formatDate(row.createdAt)}
                         </td>
-                          <td className="px-4 py-1.5 whitespace-nowrap">
+                        <td className="px-4 py-1.5 whitespace-nowrap">
                           {row.lastUpdatedAt ? (
                             <span className="bg-blue-50 text-blue-600 text-xs font-medium px-2 py-0.5 rounded-full">
                               {formatDateTime(row.lastUpdatedAt)}
@@ -418,10 +434,7 @@ export default function DistributorTablePage() {
                         ["City", selectedEnquiry.city],
                         ["Service", selectedEnquiry.service],
                         ["Created At", formatDate(selectedEnquiry.createdAt)],
-                        [
-                          "Follow Up",
-                          selectedEnquiry.followUpDate || "Not set",
-                        ],
+                        ["Follow Up", selectedEnquiry.followUpDate || "Not set"],
                       ].map(([label, value]) => (
                         <div key={label} className="flex items-start gap-2">
                           <span className="text-sm text-gray-700 w-24 flex-shrink-0 pt-0.5">
@@ -492,19 +505,14 @@ export default function DistributorTablePage() {
                     {(selectedEnquiry.comments || []).length > 0 && (
                       <span className="bg-gray-100 text-gray-500 text-[11px] font-semibold px-2.5 py-0.5 rounded-full">
                         {(selectedEnquiry.comments || []).length} note
-                        {(selectedEnquiry.comments || []).length !== 1
-                          ? "s"
-                          : ""}
+                        {(selectedEnquiry.comments || []).length !== 1 ? "s" : ""}
                       </span>
                     )}
                   </div>
 
                   {(selectedEnquiry.comments || []).length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-center">
-                      <FaRegCommentDots
-                        className="text-gray-400 mb-3"
-                        size={40}
-                      />
+                      <FaRegCommentDots className="text-gray-400 mb-3" size={40} />
                       <p className="text-sm text-gray-600 font-medium">
                         No comments yet
                       </p>
@@ -524,8 +532,7 @@ export default function DistributorTablePage() {
                             <div className="flex items-center gap-2 mb-2">
                               <div className="w-6 h-6 rounded-full bg-orange-300 flex items-center justify-center flex-shrink-0">
                                 <span className="text-[10px] font-bold text-orange-600">
-                                  {selectedEnquiry.name?.[0]?.toUpperCase() ||
-                                    "U"}
+                                  {selectedEnquiry.name?.[0]?.toUpperCase() || "U"}
                                 </span>
                               </div>
                               <span className="text-xs font-semibold text-gray-700">
