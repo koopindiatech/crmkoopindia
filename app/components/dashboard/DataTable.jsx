@@ -28,7 +28,7 @@ export default function DistributorTablePage() {
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
 
   useEffect(() => {
     fetchEnquiries();
@@ -311,6 +311,7 @@ export default function DistributorTablePage() {
                     onChange={(e) => setRowsPerPage(Number(e.target.value))}
                     className="border border-gray-300 rounded px-1.5 py-0.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer"
                   >
+                    <option value={20}>20</option>
                     <option value={50}>50</option>
                     <option value={100}>100</option>
                     <option value={200}>200</option>
