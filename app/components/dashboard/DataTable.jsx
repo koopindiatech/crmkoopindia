@@ -40,22 +40,11 @@ export default function DistributorTablePage() {
       const snapshot = await getDocs(collection(db, "enquiries"));
       const list = snapshot.docs.map((d) => ({ docId: d.id, ...d.data() }));
 
-      // ✅ Fixed sort — handles Firestore Timestamp, ISO string, and DD/MM/YYYY
+      // ✅ Sort by Enquiry ID descending (e.g. KI00008 → KI00007 → ...)
       list.sort((a, b) => {
-        const getTime = (val) => {
-          if (!val) return 0;
-          if (val?.seconds) return val.seconds * 1000; // Firestore Timestamp
-          if (typeof val === "string") {
-            // Try DD/MM/YYYY format
-            const ddmmyyyy = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-            if (ddmmyyyy) {
-              return new Date(`${ddmmyyyy[3]}-${ddmmyyyy[2]}-${ddmmyyyy[1]}`).getTime();
-            }
-            return new Date(val).getTime(); // ISO string or other parseable
-          }
-          return 0;
-        };
-        return getTime(b.createdAt) - getTime(a.createdAt);
+        const numA = parseInt((a.docId || "").replace(/\D/g, ""), 10) || 0;
+        const numB = parseInt((b.docId || "").replace(/\D/g, ""), 10) || 0;
+        return numB - numA;
       });
 
       setData(list);
