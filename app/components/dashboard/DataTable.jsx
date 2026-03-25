@@ -19,18 +19,18 @@ import {
 
 // ── All possible columns ──────────────────────────────────────────────────────
 const ALL_COLUMNS = [
-  { key: "docId",         label: "Enquiry ID" },
-  { key: "createdAt",     label: "Created At" },
-  { key: "lastUpdatedAt", label: "Last Updated" },
-  { key: "followUpDate",  label: "Next Follow Up" },
-  { key: "name",          label: "Name" },
-  { key: "email",         label: "Email" },
-  { key: "mobile",        label: "Mobile" },
-  { key: "company",       label: "Company" },
-  { key: "city",          label: "City" },
-  { key: "services",      label: "Services" },
-  { key: "message",       label: "Message" },
-  { key: "source",        label: "Source" },
+  { key: "docId",         label: "Enquiry ID",     minW: "100px" },
+  { key: "createdAt",     label: "Created At",     minW: "100px" },
+  { key: "lastUpdatedAt", label: "Last Updated",   minW: "150px" },
+  { key: "followUpDate",  label: "Next Follow Up", minW: "120px" },
+  { key: "name",          label: "Name",           minW: "120px" },
+  { key: "email",         label: "Email",          minW: "180px" },
+  { key: "mobile",        label: "Mobile",         minW: "110px" },
+  { key: "company",       label: "Company",        minW: "120px" },
+  { key: "city",          label: "City",           minW: "100px" },
+  { key: "services",      label: "Services",       minW: "200px" },
+  { key: "message",       label: "Message",        minW: "160px" },
+  { key: "source",        label: "Source",         minW: "110px" },
 ];
 
 const DEFAULT_VISIBLE = [
@@ -39,6 +39,20 @@ const DEFAULT_VISIBLE = [
 ];
 
 const LS_KEY = "enquiry_table_visible_cols";
+
+// ── Helper: get services from a row ──────────────────────────────────────────
+// Handles: `services` array, `services` string, `service` string (singular)
+function getServicesArr(row) {
+  if (row.services) {
+    if (Array.isArray(row.services) && row.services.length > 0) return row.services;
+    if (typeof row.services === "string" && row.services.trim()) return [row.services.trim()];
+  }
+  if (row.service) {
+    if (Array.isArray(row.service) && row.service.length > 0) return row.service;
+    if (typeof row.service === "string" && row.service.trim()) return [row.service.trim()];
+  }
+  return [];
+}
 
 // Load from localStorage or fall back to default
 function loadVisibleCols() {
@@ -70,9 +84,7 @@ export default function DistributorTablePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(20);
 
-  useEffect(() => {
-    fetchEnquiries();
-  }, []);
+  useEffect(() => { fetchEnquiries(); }, []);
 
   // Close col picker on outside click
   useEffect(() => {
@@ -171,20 +183,53 @@ export default function DistributorTablePage() {
             {row.followUpDate}
           </span>
         ) : <span className="text-gray-400 text-xs">—</span>;
+
       case "services": {
-        const svc = row.services;
-        if (!svc || (Array.isArray(svc) && svc.length === 0)) return <span className="text-gray-400 text-xs">—</span>;
-        const display = Array.isArray(svc) ? svc.join(", ") : String(svc);
+        // ── handles BOTH `services` (array/string) AND `service` (string) ──
+        const arr = getServicesArr(row);
+        if (arr.length === 0) return <span className="text-gray-400 text-xs">—</span>;
+
+        if (arr.length <= 2) {
+          return (
+            <div className="flex flex-wrap gap-1">
+              {arr.map((s, i) => (
+                <span
+                  key={i}
+                  className="inline-block bg-indigo-50 text-indigo-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-indigo-100 whitespace-nowrap"
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+          );
+        }
+
+        // 3+ items: show first 2 tags + "+N more" badge
         return (
-          <span className="text-gray-700 text-xs" title={display}>
-            {display.length > 50 ? display.slice(0, 50) + "…" : display}
-          </span>
+          <div className="flex flex-wrap gap-1 items-center" title={arr.join(", ")}>
+            {arr.slice(0, 2).map((s, i) => (
+              <span
+                key={i}
+                className="inline-block bg-indigo-50 text-indigo-700 text-[10px] font-semibold px-2 py-0.5 rounded-full border border-indigo-100 whitespace-nowrap"
+              >
+                {s}
+              </span>
+            ))}
+            <span className="inline-block bg-gray-100 text-gray-500 text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">
+              +{arr.length - 2} more
+            </span>
+          </div>
         );
       }
+
       case "message":
         return (
           <span className="text-gray-600 text-xs" title={row.message || ""}>
-            {row.message ? (row.message.length > 40 ? row.message.slice(0, 40) + "…" : row.message) : "—"}
+            {row.message
+              ? row.message.length > 40
+                ? row.message.slice(0, 40) + "…"
+                : row.message
+              : "—"}
           </span>
         );
       case "source":
@@ -245,9 +290,7 @@ export default function DistributorTablePage() {
     });
   };
 
-  const resetCols = () => {
-    setVisibleCols(new Set(DEFAULT_VISIBLE));
-  };
+  const resetCols = () => setVisibleCols(new Set(DEFAULT_VISIBLE));
 
   // Ordered visible columns
   const activeColumns = ALL_COLUMNS.filter((c) => visibleCols.has(c.key));
@@ -262,7 +305,7 @@ export default function DistributorTablePage() {
         .enq-tr:hover { background: #f0f4ff; cursor: pointer; }
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 99px; }
-        .cog-spin:hover { animation: spin 0.6s linear infinite; }
+        .cog-btn:hover .cog-icon { animation: spin 0.6s linear infinite; }
       `}</style>
 
       <div className="p-4 bg-white min-h-screen">
@@ -282,9 +325,9 @@ export default function DistributorTablePage() {
             <button
               onClick={() => setColPickerOpen((v) => !v)}
               title="Manage columns"
-              className="flex items-center justify-center w-9 h-9 border border-gray-400 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition cursor-pointer"
+              className="cog-btn flex items-center justify-center w-9 h-9 border border-gray-400 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition cursor-pointer"
             >
-              <FaCog size={15} className="cog-spin" />
+              <FaCog size={15} className="cog-icon" />
             </button>
 
             {colPickerOpen && (
@@ -334,6 +377,7 @@ export default function DistributorTablePage() {
                     {activeColumns.map((col) => (
                       <th
                         key={col.key}
+                        style={{ minWidth: col.minW }}
                         className="text-left px-4 py-2 font-semibold text-gray-700 border-b border-gray-200 whitespace-nowrap"
                       >
                         {col.label}
@@ -356,7 +400,11 @@ export default function DistributorTablePage() {
                         onClick={() => openEnquiry(row)}
                       >
                         {activeColumns.map((col) => (
-                          <td key={col.key} className="px-4 py-1.5">
+                          <td
+                            key={col.key}
+                            style={{ minWidth: col.minW }}
+                            className="px-4 py-2 align-top"
+                          >
                             {renderCell(row, col.key)}
                           </td>
                         ))}
@@ -492,17 +540,19 @@ export default function DistributorTablePage() {
                         </div>
                       ))}
 
-                      {/* Services — special rendering */}
+                      {/* Services — handles both `services` array AND `service` string */}
                       <div className="flex items-start gap-2">
-                        <span className="text-xs text-gray-500 w-50 flex-shrink-0 pt-0.5">Services</span>
+                        <span className="text-xs text-gray-500 w-46 flex-shrink-0 pt-0.5">Services</span>
                         <div className="flex flex-wrap gap-1.5">
                           {(() => {
-                            const svc = selectedEnquiry.services;
-                            if (!svc || (Array.isArray(svc) && svc.length === 0))
+                            const arr = getServicesArr(selectedEnquiry);
+                            if (arr.length === 0)
                               return <span className="text-sm text-gray-400">—</span>;
-                            const arr = Array.isArray(svc) ? svc : [svc];
                             return arr.map((s, i) => (
-                              <span key={i} className="bg-indigo-50 text-indigo-700 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-indigo-100">
+                              <span
+                                key={i}
+                                className="bg-indigo-50 text-indigo-700 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-indigo-100"
+                              >
                                 {s}
                               </span>
                             ));
