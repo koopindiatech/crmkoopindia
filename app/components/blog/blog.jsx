@@ -93,6 +93,9 @@ export default function BlogPanel() {
   const [formData, setFormData]         = useState(EMPTY_FORM);
   const [slugEdited, setSlugEdited]     = useState(false);
   const [editorText, setEditorText]     = useState("");
+  const [lineSpacing, setLineSpacing]   = useState(1.85);
+  const [letterSpacing, setLetterSpacing] = useState(0);
+  const [selFontSize, setSelFontSize]   = useState(16);
 
   // Modals
   const [showLinkModal, setShowLinkModal]   = useState(false);
@@ -257,6 +260,8 @@ export default function BlogPanel() {
           focusKeywords:   formData.focusKeywords
             ? formData.focusKeywords.split(",").map((k) => k.trim()).filter(Boolean)
             : [],
+          metaTitleMax: 110,
+          metaDescMax: 300,
         },
       };
 
@@ -359,6 +364,76 @@ export default function BlogPanel() {
   const handleUndo        = () => { editorRef.current?.focus(); document.execCommand("undo"); };
   const handleRedo        = () => { editorRef.current?.focus(); document.execCommand("redo"); };
   const handleRemoveFormat = () => { editorRef.current?.focus(); document.execCommand("removeFormat"); };
+
+  // ── Selected Text Font Size ───────────────────────────────────────────────
+  const applySelectionFontSize = (newSize) => {
+    const clamped = Math.min(72, Math.max(8, newSize));
+    setSelFontSize(clamped);
+    editorRef.current?.focus();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    const fragment = range.extractContents();
+    const span = document.createElement("span");
+    span.style.fontSize = clamped + "px";
+    span.appendChild(fragment);
+    range.insertNode(span);
+    // Re-select the inserted span
+    const newRange = document.createRange();
+    newRange.selectNodeContents(span);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
+  };
+
+  // ── Block Top / Bottom Margin (selected line/block) ──────────────────────
+  const applyBlockMargin = (side, delta) => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+
+    // Clone range BEFORE focus() so selection isn't lost
+    const savedRange = sel.getRangeAt(0).cloneRange();
+
+    const BLOCKS = ["P","H1","H2","H3","H4","H5","H6","LI","BLOCKQUOTE","PRE","DIV"];
+    const prop = side === "top" ? "marginTop" : "marginBottom";
+
+    // Helper: walk up DOM tree to find nearest block ancestor inside editor
+    const findBlock = (node) => {
+      while (node && node !== editorRef.current) {
+        if (node.nodeType === 1 && BLOCKS.includes(node.nodeName)) return node;
+        node = node.parentNode;
+      }
+      return null;
+    };
+
+    const affectedBlocks = new Set();
+    const startBlock = findBlock(savedRange.startContainer);
+    const endBlock   = findBlock(savedRange.endContainer);
+
+    if (startBlock) affectedBlocks.add(startBlock);
+
+    // If selection spans multiple sibling blocks, collect all in between
+    if (endBlock && endBlock !== startBlock) {
+      let cur = startBlock;
+      while (cur) {
+        cur = cur.nextElementSibling;
+        if (!cur) break;
+        if (BLOCKS.includes(cur.nodeName)) affectedBlocks.add(cur);
+        if (cur === endBlock) break;
+      }
+      affectedBlocks.add(endBlock);
+    }
+
+    // Apply margin to each found block
+    affectedBlocks.forEach((block) => {
+      const current = parseFloat(block.style[prop]) || 0;
+      block.style[prop] = Math.max(0, current + delta) + "px";
+    });
+
+    // Restore focus and selection
+    editorRef.current?.focus();
+    sel.removeAllRanges();
+    sel.addRange(savedRange);
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -494,13 +569,13 @@ export default function BlogPanel() {
 
               <SectionLabel number="4" label="SEO Settings" emoji="🔍" />
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
-                <Field label={`Meta Title (${(formData.metaTitle || "").length}/65)`}>
-                  <input type="text" name="metaTitle" value={formData.metaTitle} onChange={handleInputChange} maxLength={65} placeholder="Defaults to blog title" className="field-input" />
-                  <CharBar value={formData.metaTitle.length} max={65} warnAt={50} dangerAt={60} />
+                <Field label={`Meta Title (${(formData.metaTitle || "").length}/110)`}>
+                  <input type="text" name="metaTitle" value={formData.metaTitle} onChange={handleInputChange} maxLength={110} placeholder="Defaults to blog title" className="field-input" style={{fontSize:"1rem", fontWeight:600}} />
+                  <CharBar value={formData.metaTitle.length} max={110} warnAt={80} dangerAt={100} />
                 </Field>
-                <Field label={`Meta Description (${(formData.metaDescription || "").length}/160)`}>
-                  <textarea name="metaDescription" value={formData.metaDescription} onChange={handleInputChange} maxLength={160} placeholder="160-char search snippet..." rows={3} className="field-input resize-none" />
-                  <CharBar value={formData.metaDescription.length} max={160} warnAt={130} dangerAt={155} />
+                <Field label={`Meta Description (${(formData.metaDescription || "").length}/300)`}>
+                  <textarea name="metaDescription" value={formData.metaDescription} onChange={handleInputChange} maxLength={300} placeholder="Detailed search snippet — up to 300 characters..." rows={6} className="field-input resize-none" style={{fontSize:"0.95rem", lineHeight:1.7}} />
+                  <CharBar value={formData.metaDescription.length} max={300} warnAt={240} dangerAt={280} />
                 </Field>
                 <Field label="Focus Keywords">
                   <input type="text" name="focusKeywords" value={formData.focusKeywords} onChange={handleInputChange} placeholder="company registration, startup, gst" className="field-input" />
@@ -707,10 +782,129 @@ export default function BlogPanel() {
 
                     <Sep />
 
+                    {/* Line Spacing */}
+                    <div className="flex items-center gap-1" title="Line Spacing">
+                      <span style={{fontSize:11, color:"#555", whiteSpace:"nowrap"}}>↕ Line</span>
+                      <button
+                        type="button"
+                        title="Decrease line spacing"
+                        onMouseDown={(e) => { e.preventDefault(); setLineSpacing(prev => Math.max(1.0, parseFloat((prev - 0.1).toFixed(1)))); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-200 transition cursor-pointer text-slate-600 font-bold text-sm"
+                      >−</button>
+                      <span style={{fontSize:11, minWidth:28, textAlign:"center", color:"#333", fontWeight:600}}>{lineSpacing.toFixed(1)}</span>
+                      <button
+                        type="button"
+                        title="Increase line spacing"
+                        onMouseDown={(e) => { e.preventDefault(); setLineSpacing(prev => Math.min(4.0, parseFloat((prev + 0.1).toFixed(1)))); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-200 transition cursor-pointer text-slate-600 font-bold text-sm"
+                      >+</button>
+                    </div>
+
+                    <Sep />
+
+                    {/* Letter Spacing */}
+                    <div className="flex items-center gap-1" title="Letter Spacing">
+                      <span style={{fontSize:11, color:"#555", whiteSpace:"nowrap"}}>↔ Letter</span>
+                      <button
+                        type="button"
+                        title="Decrease letter spacing"
+                        onMouseDown={(e) => { e.preventDefault(); setLetterSpacing(prev => Math.max(-2, parseFloat((prev - 0.5).toFixed(1)))); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-200 transition cursor-pointer text-slate-600 font-bold text-sm"
+                      >−</button>
+                      <span style={{fontSize:11, minWidth:32, textAlign:"center", color:"#333", fontWeight:600}}>{letterSpacing.toFixed(1)}px</span>
+                      <button
+                        type="button"
+                        title="Increase letter spacing"
+                        onMouseDown={(e) => { e.preventDefault(); setLetterSpacing(prev => Math.min(10, parseFloat((prev + 0.5).toFixed(1)))); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-200 transition cursor-pointer text-slate-600 font-bold text-sm"
+                      >+</button>
+                    </div>
+
+                    <Sep />
+
                     {/* Help */}
                     <TBtn title="Keyboard shortcuts" onMouseDown={(e) => { e.preventDefault(); alert("Shortcuts:\nCtrl+B  →  Bold\nCtrl+I  →  Italic\nCtrl+U  →  Underline\nCtrl+Z  →  Undo\nCtrl+Y  →  Redo\nCtrl+A  →  Select All"); }}>
                       <span style={{fontSize:12, fontWeight:700, color:"#555", border:"1px solid #bbb", borderRadius:"50%", width:16, height:16, display:"flex", alignItems:"center", justifyContent:"center"}}>?</span>
                     </TBtn>
+                  </div>
+
+                  {/* ROW 3: Font Size (Selection) + Block Spacing */}
+                  <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-[#e0e0e0] bg-[#efefef]">
+
+                    {/* Selected Text Font Size */}
+                    <div className="flex items-center gap-1" title="Selected text font size">
+                      <span style={{fontSize:11, color:"#555", whiteSpace:"nowrap", fontWeight:600}}>Aa Size</span>
+                      <button
+                        type="button"
+                        title="Decrease selected text size"
+                        onMouseDown={(e) => { e.preventDefault(); applySelectionFontSize(selFontSize - 1); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-300 transition cursor-pointer text-slate-700 font-bold text-sm"
+                      >−</button>
+                      <input
+                        type="number"
+                        value={selFontSize}
+                        min={8} max={72}
+                        onChange={(e) => setSelFontSize(Number(e.target.value))}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applySelectionFontSize(selFontSize); } }}
+                        title="Type size then press Enter to apply"
+                        style={{width:38, fontSize:11, textAlign:"center", border:"1px solid #ccc", borderRadius:4, padding:"1px 2px", background:"#fff", fontWeight:600, color:"#333"}}
+                      />
+                      <button
+                        type="button"
+                        title="Increase selected text size"
+                        onMouseDown={(e) => { e.preventDefault(); applySelectionFontSize(selFontSize + 1); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-300 transition cursor-pointer text-slate-700 font-bold text-sm"
+                      >+</button>
+                      <button
+                        type="button"
+                        title="Apply this font size to selected text"
+                        onMouseDown={(e) => { e.preventDefault(); applySelectionFontSize(selFontSize); }}
+                        className="px-2 h-6 rounded bg-[#fc8f41] hover:bg-orange-500 transition cursor-pointer text-white font-bold text-[10px] ml-0.5"
+                      >Apply</button>
+                    </div>
+
+                    <Sep />
+
+                    {/* Block Top Spacing */}
+                    <div className="flex items-center gap-1" title="Top space of current line/paragraph">
+                      <span style={{fontSize:11, color:"#555", whiteSpace:"nowrap"}}>↑ Top</span>
+                      <button
+                        type="button"
+                        title="Decrease top space of current block"
+                        onMouseDown={(e) => { e.preventDefault(); applyBlockMargin("top", -4); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-300 transition cursor-pointer text-slate-600 font-bold text-sm"
+                      >−</button>
+                      <button
+                        type="button"
+                        title="Increase top space of current block"
+                        onMouseDown={(e) => { e.preventDefault(); applyBlockMargin("top", 4); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-300 transition cursor-pointer text-slate-600 font-bold text-sm"
+                      >+</button>
+                    </div>
+
+                    <Sep />
+
+                    {/* Block Bottom Spacing */}
+                    <div className="flex items-center gap-1" title="Bottom space of current line/paragraph">
+                      <span style={{fontSize:11, color:"#555", whiteSpace:"nowrap"}}>↓ Bottom</span>
+                      <button
+                        type="button"
+                        title="Decrease bottom space of current block"
+                        onMouseDown={(e) => { e.preventDefault(); applyBlockMargin("bottom", -4); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-300 transition cursor-pointer text-slate-600 font-bold text-sm"
+                      >−</button>
+                      <button
+                        type="button"
+                        title="Increase bottom space of current block"
+                        onMouseDown={(e) => { e.preventDefault(); applyBlockMargin("bottom", 4); }}
+                        className="flex items-center justify-center w-6 h-6 rounded hover:bg-slate-300 transition cursor-pointer text-slate-600 font-bold text-sm"
+                      >+</button>
+                    </div>
+
+                    <Sep />
+
+                    <span style={{fontSize:10, color:"#888", whiteSpace:"nowrap"}}> Text select karke Aa Size apply karo · Cursor rakhke ↑↓ se spacing adjust karo</span>
+
                   </div>
 
                   {/* Tip */}
@@ -729,6 +923,7 @@ export default function BlogPanel() {
                   suppressContentEditableWarning
                   onInput={() => setEditorText(editorRef.current?.innerText || "")}
                   className="blog-editor min-h-[580px] p-6 outline-none"
+                  style={{ lineHeight: lineSpacing, letterSpacing: `${letterSpacing}px` }}
                   data-placeholder="Start writing your blog post here...&#10;&#10;Type your content and use the toolbar above to format it:&#10;• Select text → click H1 / H2 / H3 for headings&#10;• Select text → click B for bold, I for italic&#10;• Click • List for bullet points&#10;• Click Image to insert a photo&#10;• Click Link to add a backlink"
                 />
               </div>
