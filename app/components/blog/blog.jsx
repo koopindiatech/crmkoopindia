@@ -20,6 +20,9 @@ const CATEGORIES = [
   "Business", "Startup", "Finance & Taxation",
   "Legal & Compliance", "Technology", "Marketing & Growth",
   "Industry Insights", "Success Stories",
+  "Business Consulting", "Distributor Development",
+  "GST, FSSAI & Compliance", "StartupShala",
+  "Trademark & Registration", "Website & Digital Marketing",
 ];
 
 const EMPTY_FORM = {
@@ -534,7 +537,7 @@ export default function BlogPanel() {
 
               <SectionLabel number="2" label="Categories" />
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {CATEGORIES.map((cat) => (
                     <label key={cat} className="flex items-center gap-2.5 cursor-pointer group">
                       <input
