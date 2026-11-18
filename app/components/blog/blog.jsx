@@ -16,6 +16,31 @@ function generateSlug(text) {
     .replace(/-+/g, "-");
 }
 
+function escapeHtml(str = "") {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function sanitizeFileName(name = "") {
+  return String(name)
+    .toLowerCase()
+    .trim()
+    .replace(/\.[^/.]+$/, "")
+    .replace(/[^a-z0-9\s-_]/g, "")
+    .replace(/[\s_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function getFileExtension(fileName = "") {
+  const parts = String(fileName).split(".");
+  return parts.length > 1 ? parts.pop().toLowerCase().replace(/[^a-z0-9]/g, "") : "png";
+}
+
 const CATEGORIES = [
   "Business", "Startup", "Finance & Taxation",
   "Legal & Compliance", "Technology", "Marketing & Growth",
@@ -28,6 +53,8 @@ const CATEGORIES = [
 const EMPTY_FORM = {
   title: "", slug: "", author: "", description: "", date: "",
   metaTitle: "", metaDescription: "", focusKeywords: "", categories: [],
+  featuredImageFileName: "", featuredImageAlt: "",
+  featuredImageTitle: "", featuredImageDescription: "",
 };
 
 // ─── Keyword Analyzer ────────────────────────────────────────────────────────
@@ -105,7 +132,14 @@ export default function BlogPanel() {
   const [linkData, setLinkData]             = useState({ url: "", anchor: "", nofollow: false, newTab: true });
   const [showImageModal, setShowImageModal] = useState(false);
   const [imageFile, setImageFile]           = useState(null);
-  const [imageCaption, setImageCaption]     = useState("");
+  const [imagePreview, setImagePreview]     = useState(null);
+  const [imageMeta, setImageMeta]           = useState({
+    fileName: "",
+    alt: "",
+    title: "",
+    description: "",
+  });
+  const [isEditingImage, setIsEditingImage] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [savedRange, setSavedRange]         = useState(null);
 
@@ -116,7 +150,8 @@ export default function BlogPanel() {
   const [filterCategory, setFilterCategory] = useState("All");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  const editorRef = useRef(null);
+  const editorRef     = useRef(null);
+  const editingImgRef = useRef(null);
 
   // ── Form Handlers ─────────────────────────────────────────────────────────
   const handleInputChange = (e) => {
@@ -145,14 +180,30 @@ export default function BlogPanel() {
   // ── Editor / Toolbar ──────────────────────────────────────────────────────
   const saveSelection = () => {
     const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) setSavedRange(sel.getRangeAt(0).cloneRange());
+    if (sel && sel.rangeCount > 0 && editorRef.current) {
+      const range = sel.getRangeAt(0);
+      if (editorRef.current.contains(range.commonAncestorContainer)) {
+        setSavedRange(range.cloneRange());
+        return;
+      }
+    }
+    setSavedRange(null);
   };
 
   const restoreSelection = () => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
     const sel = window.getSelection();
-    sel?.removeAllRanges();
-    if (savedRange) sel?.addRange(savedRange);
-    else editorRef.current?.focus();
+    if (savedRange && editorRef.current.contains(savedRange.commonAncestorContainer)) {
+      sel?.removeAllRanges();
+      sel?.addRange(savedRange);
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents(editorRef.current);
+      range.collapse(false);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
   };
 
   const execCmd = (cmd, val = null) => {
@@ -160,13 +211,81 @@ export default function BlogPanel() {
     document.execCommand(cmd, false, val);
   };
 
+  const openNewImageModal = () => {
+    saveSelection();
+    editingImgRef.current = null;
+    setIsEditingImage(false);
+    setImageFile(null);
+    setImagePreview(null);
+    setImageMeta({ fileName: "", alt: "", title: "", description: "" });
+    setShowImageModal(true);
+  };
+
+  const closeImageModal = () => {
+    if (imagePreview && imagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setShowImageModal(false);
+    setImageFile(null);
+    setImagePreview(null);
+    setImageMeta({ fileName: "", alt: "", title: "", description: "" });
+    setIsEditingImage(false);
+    editingImgRef.current = null;
+    setSavedRange(null);
+  };
+
+  const handleImageFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (imagePreview && imagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    const suggestedName = sanitizeFileName(file.name);
+    setImageMeta((prev) => ({
+      ...prev,
+      fileName: suggestedName || prev.fileName,
+    }));
+  };
+
+  const handleEditorDoubleClick = (e) => {
+    const imgEl = e.target?.tagName === "IMG" ? e.target : null;
+    if (!imgEl || !editorRef.current?.contains(imgEl)) return;
+    editingImgRef.current = imgEl;
+    setIsEditingImage(true);
+    setImageFile(null);
+    setImagePreview(imgEl.getAttribute("src") || null);
+    const existingFigcaption = imgEl.closest("figure")?.querySelector("figcaption")?.textContent || "";
+    setImageMeta({
+      fileName:    imgEl.getAttribute("data-filename") || "",
+      alt:         imgEl.getAttribute("alt") || "",
+      title:       imgEl.getAttribute("title") || "",
+      description: imgEl.getAttribute("data-description") || existingFigcaption,
+    });
+    setShowImageModal(true);
+  };
+
+  const removeEditingImage = () => {
+    const imgEl = editingImgRef.current;
+    if (imgEl) {
+      const figure = imgEl.closest("figure");
+      if (figure && editorRef.current?.contains(figure)) {
+        figure.remove();
+      } else {
+        imgEl.remove();
+      }
+      setEditorText(editorRef.current?.innerText || "");
+    }
+    closeImageModal();
+  };
+
   const handleToolbar = (cmd, val) => {
     if (cmd === "custom-link") {
       saveSelection();
       setShowLinkModal(true);
     } else if (cmd === "custom-image") {
-      saveSelection();
-      setShowImageModal(true);
+      openNewImageModal();
     } else if (val) {
       execCmd(cmd, val);
     } else {
@@ -190,30 +309,86 @@ export default function BlogPanel() {
   };
 
   const insertImage = async () => {
-    if (!imageFile) return;
+    if (!isEditingImage && !imageFile) return;
     setImageUploading(true);
     try {
-      const slugKey = formData.slug || `img-${Date.now()}`;
-      const imgRef  = ref(storage, `blogs/content-images/${slugKey}-${Date.now()}`);
-      await uploadBytes(imgRef, imageFile);
-      const url = await getDownloadURL(imgRef);
-      restoreSelection();
-      const cap = imageCaption
-        ? `<figcaption class="blog-figcaption">${imageCaption}</figcaption>`
-        : "";
-      document.execCommand(
-        "insertHTML", false,
-        `<figure class="blog-figure"><img src="${url}" alt="${imageCaption || "Blog image"}" class="blog-img" />${cap}</figure><p></p>`
-      );
+      const slugKey   = formData.slug || `img-${Date.now()}`;
+      const altText   = imageMeta.alt.trim();
+      const titleText = imageMeta.title.trim();
+      const descText  = imageMeta.description.trim();
+
+      let uploadedUrl = null;
+      let finalFileName = imageMeta.fileName.trim();
+
+      if (imageFile) {
+        const ext = getFileExtension(imageFile.name);
+        const cleanName = sanitizeFileName(finalFileName || imageFile.name) || slugKey;
+        finalFileName = `${cleanName}.${ext}`;
+        const imgRef = ref(storage, `blogs/content-images/${cleanName}-${Date.now()}.${ext}`);
+        await uploadBytes(imgRef, imageFile, {
+          contentType: imageFile.type || undefined,
+          customMetadata: {
+            fileName: finalFileName,
+            alt: altText,
+            title: titleText,
+            description: descText,
+          },
+        });
+        uploadedUrl = await getDownloadURL(imgRef);
+      }
+
+      if (isEditingImage && editingImgRef.current) {
+        const imgEl = editingImgRef.current;
+        if (uploadedUrl) imgEl.setAttribute("src", uploadedUrl);
+        imgEl.setAttribute("alt", altText || titleText || "Blog image");
+        if (titleText) imgEl.setAttribute("title", titleText);
+        else imgEl.removeAttribute("title");
+        if (finalFileName) imgEl.setAttribute("data-filename", finalFileName);
+        else imgEl.removeAttribute("data-filename");
+        if (descText) imgEl.setAttribute("data-description", descText);
+        else imgEl.removeAttribute("data-description");
+
+        const figure = imgEl.closest("figure");
+        if (figure) {
+          if (finalFileName) figure.setAttribute("data-filename", finalFileName);
+          else figure.removeAttribute("data-filename");
+          if (descText) figure.setAttribute("data-description", descText);
+          else figure.removeAttribute("data-description");
+
+          let figcaption = figure.querySelector("figcaption");
+          if (descText) {
+            if (!figcaption) {
+              figcaption = document.createElement("figcaption");
+              figcaption.className = "blog-figcaption";
+              figure.appendChild(figcaption);
+            }
+            figcaption.textContent = descText;
+          } else if (figcaption) {
+            figcaption.remove();
+          }
+        }
+        setEditorText(editorRef.current?.innerText || "");
+      } else if (uploadedUrl) {
+        restoreSelection();
+        const cap = descText
+          ? `<figcaption class="blog-figcaption">${escapeHtml(descText)}</figcaption>`
+          : "";
+        const titleAttr = titleText ? ` title="${escapeHtml(titleText)}"` : "";
+        const fileAttr  = finalFileName ? ` data-filename="${escapeHtml(finalFileName)}"` : "";
+        const descAttr  = descText ? ` data-description="${escapeHtml(descText)}"` : "";
+        const safeAlt   = escapeHtml(altText || titleText || "Blog image");
+        document.execCommand(
+          "insertHTML", false,
+          `<figure class="blog-figure"${fileAttr}${descAttr}><img src="${escapeHtml(uploadedUrl)}" alt="${safeAlt}"${titleAttr}${fileAttr}${descAttr} class="blog-img" />${cap}</figure><p><br /></p>`
+        );
+        setEditorText(editorRef.current?.innerText || "");
+      }
+      closeImageModal();
     } catch (err) {
       console.error(err);
       alert("Image upload failed.");
     }
     setImageUploading(false);
-    setShowImageModal(false);
-    setImageFile(null);
-    setImageCaption("");
-    setSavedRange(null);
   };
 
   // ── Reset ─────────────────────────────────────────────────────────────────
@@ -243,20 +418,55 @@ export default function BlogPanel() {
 
     try {
       let featuredImageUrl = formData.existingImageUrl || "";
+      let finalFeaturedFileName = formData.featuredImageFileName.trim();
+      const featuredAlt   = formData.featuredImageAlt.trim();
+      const featuredTitle = formData.featuredImageTitle.trim();
+      const featuredDesc  = formData.featuredImageDescription.trim();
+
       if (featuredImage) {
-        const fRef = ref(storage, `blogs/featured/${slug}-${Date.now()}`);
-        await uploadBytes(fRef, featuredImage);
+        const ext = getFileExtension(featuredImage.name);
+        const cleanFeaturedName = sanitizeFileName(finalFeaturedFileName || featuredImage.name) || slug;
+        finalFeaturedFileName = `${cleanFeaturedName}.${ext}`;
+        const fRef = ref(storage, `blogs/featured/${cleanFeaturedName}-${Date.now()}.${ext}`);
+        await uploadBytes(fRef, featuredImage, {
+          contentType: featuredImage.type || undefined,
+          customMetadata: {
+            fileName: finalFeaturedFileName,
+            alt: featuredAlt,
+            title: featuredTitle,
+            description: featuredDesc,
+          },
+        });
         featuredImageUrl = await getDownloadURL(fRef);
       }
+
+      const contentImages = Array.from(editorRef.current?.querySelectorAll("img") || []).map((img) => ({
+        url:         img.getAttribute("src") || "",
+        fileName:    img.getAttribute("data-filename") || "",
+        alt:         img.getAttribute("alt") || "",
+        title:       img.getAttribute("title") || "",
+        description: img.getAttribute("data-description") || img.closest("figure")?.querySelector("figcaption")?.textContent || "",
+      }));
 
       const payload = {
         title, slug,
         author:      formData.author.trim(),
         description: formData.description.trim(),
         date:        formData.date,
-        imageUrl:    featuredImageUrl,
-        categories:  formData.categories,
+        imageUrl:         featuredImageUrl,
+        imageFileName:    finalFeaturedFileName,
+        imageAlt:         featuredAlt,
+        imageTitle:       featuredTitle,
+        imageDescription: featuredDesc,
+        featuredImageMeta: {
+          fileName:    finalFeaturedFileName,
+          alt:         featuredAlt,
+          title:       featuredTitle,
+          description: featuredDesc,
+        },
+        categories:    formData.categories,
         bodyContent,
+        contentImages,
         seo: {
           metaTitle:       formData.metaTitle.trim() || title,
           metaDescription: formData.metaDescription.trim() || formData.description.trim(),
@@ -303,16 +513,20 @@ export default function BlogPanel() {
   const handleEdit = (blog) => {
     setEditSlug(blog.slug);
     setFormData({
-      title:          blog.title || "",
-      slug:           blog.slug  || "",
-      author:         blog.author || "",
-      description:    blog.description || "",
-      date:           blog.date || "",
-      metaTitle:      blog.seo?.metaTitle || "",
-      metaDescription: blog.seo?.metaDescription || "",
-      focusKeywords:  (blog.seo?.focusKeywords || []).join(", "),
-      categories:     blog.categories || [],
-      existingImageUrl: blog.imageUrl || "",
+      title:                    blog.title || "",
+      slug:                     blog.slug  || "",
+      author:                   blog.author || "",
+      description:              blog.description || "",
+      date:                     blog.date || "",
+      metaTitle:                blog.seo?.metaTitle || "",
+      metaDescription:          blog.seo?.metaDescription || "",
+      focusKeywords:            (blog.seo?.focusKeywords || []).join(", "),
+      categories:               blog.categories || [],
+      existingImageUrl:         blog.imageUrl || "",
+      featuredImageFileName:    blog.featuredImageMeta?.fileName || blog.imageFileName || "",
+      featuredImageAlt:         blog.featuredImageMeta?.alt || blog.imageAlt || "",
+      featuredImageTitle:       blog.featuredImageMeta?.title || blog.imageTitle || "",
+      featuredImageDescription: blog.featuredImageMeta?.description || blog.imageDescription || "",
     });
     setFeaturedPreview(blog.imageUrl || null);
     setFeaturedImage(null);
@@ -555,19 +769,82 @@ export default function BlogPanel() {
               </div>
 
               <SectionLabel number="3" label="Featured Image" />
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
                 {featuredPreview && (
-                  <img src={featuredPreview} alt="Preview" className="w-full h-32 object-cover rounded-xl border border-slate-200 mb-3" />
+                  <img
+                    src={featuredPreview}
+                    alt={formData.featuredImageAlt || "Preview"}
+                    title={formData.featuredImageTitle || ""}
+                    className="w-full h-32 object-cover rounded-xl border border-slate-200"
+                  />
                 )}
-                <input
-                  id="featured-input" type="file" accept="image/*"
-                  onChange={(e) => {
-                    const f = e.target.files[0];
-                    if (f) { setFeaturedImage(f); setFeaturedPreview(URL.createObjectURL(f)); }
-                  }}
-                  className="w-full border border-slate-300 p-2 rounded-lg bg-slate-50 text-slate-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#0f172a] file:text-white hover:file:bg-slate-700 cursor-pointer outline-none text-sm"
-                />
-                {editSlug && <p className="text-xs text-slate-400 mt-1">Leave empty to keep existing image.</p>}
+                <div>
+                  <input
+                    id="featured-input" type="file" accept="image/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setFeaturedImage(f);
+                        setFeaturedPreview(URL.createObjectURL(f));
+                        const suggestedName = sanitizeFileName(f.name);
+                        setFormData((prev) => ({
+                          ...prev,
+                          featuredImageFileName: suggestedName || prev.featuredImageFileName,
+                        }));
+                      }
+                    }}
+                    className="w-full border border-slate-300 p-2 rounded-lg bg-slate-50 text-slate-700 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#0f172a] file:text-white hover:file:bg-slate-700 cursor-pointer outline-none text-sm"
+                  />
+                  {editSlug && <p className="text-xs text-slate-400 mt-1">Leave empty to keep existing image.</p>}
+                </div>
+
+                <Field label="Image File Name">
+                  <div className="flex items-center bg-slate-50 border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-[#fc8f41]">
+                    <input
+                      type="text"
+                      name="featuredImageFileName"
+                      value={formData.featuredImageFileName}
+                      onChange={handleInputChange}
+                      placeholder="e.g. gst-registration-guide"
+                      className="flex-1 bg-transparent px-3 py-2 text-sm text-slate-800 outline-none"
+                    />
+                    {featuredImage && (
+                      <span className="text-slate-400 text-xs px-2.5 whitespace-nowrap">
+                        .{getFileExtension(featuredImage.name)}
+                      </span>
+                    )}
+                  </div>
+                </Field>
+                <Field label="Alt Text">
+                  <input
+                    type="text"
+                    name="featuredImageAlt"
+                    value={formData.featuredImageAlt}
+                    onChange={handleInputChange}
+                    placeholder="Describe image for SEO & accessibility..."
+                    className="field-input"
+                  />
+                </Field>
+                <Field label="Image Title">
+                  <input
+                    type="text"
+                    name="featuredImageTitle"
+                    value={formData.featuredImageTitle}
+                    onChange={handleInputChange}
+                    placeholder="Tooltip / title attribute for image..."
+                    className="field-input"
+                  />
+                </Field>
+                <Field label="Image Description">
+                  <textarea
+                    name="featuredImageDescription"
+                    value={formData.featuredImageDescription}
+                    onChange={handleInputChange}
+                    placeholder="Detailed image description or caption..."
+                    rows={2}
+                    className="field-input resize-none"
+                  />
+                </Field>
               </div>
 
               <SectionLabel number="4" label="SEO Settings" emoji="🔍" />
@@ -693,10 +970,15 @@ export default function BlogPanel() {
                       <span style={{fontSize:11, letterSpacing:"-1px", color:"#555"}}>&#9135;&#9135;</span>
                     </TBtn>
 
-                    {/* Insert Image (Temporarily Disabled) */}
-                    {/* <TBtn title="Insert image" onMouseDown={() => { saveSelection(); setShowImageModal(true); }}>
-                      <ImgIcon />
-                    </TBtn> */}
+                    <Sep />
+
+                    {/* Insert Image */}
+                    <TBtn title="Insert image at cursor" onMouseDown={openNewImageModal}>
+                      <span className="flex items-center gap-1 px-0.5 text-[11px] font-semibold text-slate-700">
+                        <ImgIcon />
+                        <span>Image</span>
+                      </span>
+                    </TBtn>
 
                     <Sep />
 
@@ -913,7 +1195,7 @@ export default function BlogPanel() {
                   {/* Tip */}
                   <div className="px-3 py-1 bg-white border-b border-slate-100">
                     <p className="text-[10px] text-slate-400">
-                      Select text then click format button &bull; Use <strong>Paragraph ▾</strong> dropdown to set heading level &bull; <strong>Ctrl+Z</strong> to undo
+                      Select text then click format button &bull; Use <strong>Paragraph ▾</strong> dropdown to set heading level &bull; Place cursor &amp; click <strong>Image</strong> to insert photo (double-click any image to edit details) &bull; <strong>Ctrl+Z</strong> to undo
                     </p>
                   </div>
                 </div>
@@ -925,6 +1207,7 @@ export default function BlogPanel() {
                   contentEditable
                   suppressContentEditableWarning
                   onInput={() => setEditorText(editorRef.current?.innerText || "")}
+                  onDoubleClick={handleEditorDoubleClick}
                   className="blog-editor min-h-[580px] p-6 outline-none"
                   style={{ lineHeight: lineSpacing, letterSpacing: `${letterSpacing}px` }}
                   data-placeholder="Start writing your blog post here...&#10;&#10;Type your content and use the toolbar above to format it:&#10;• Select text → click H1 / H2 / H3 for headings&#10;• Select text → click B for bold, I for italic&#10;• Click • List for bullet points&#10;• Click Image to insert a photo&#10;• Click Link to add a backlink"
@@ -991,7 +1274,7 @@ export default function BlogPanel() {
                   className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition p-4 flex flex-col sm:flex-row gap-4"
                 >
                   {blog.imageUrl
-                    ? <img src={blog.imageUrl} alt={blog.title} className="w-full sm:w-28 h-20 object-cover rounded-xl border border-slate-100 shrink-0" />
+                    ? <img src={blog.imageUrl} alt={blog.imageAlt || blog.featuredImageMeta?.alt || blog.title} title={blog.imageTitle || blog.featuredImageMeta?.title || ""} className="w-full sm:w-28 h-20 object-cover rounded-xl border border-slate-100 shrink-0" />
                     : <div className="w-full sm:w-28 h-20 bg-slate-100 rounded-xl flex items-center justify-center text-2xl shrink-0">Blog</div>
                   }
                   <div className="flex-1 min-w-0">
@@ -1061,21 +1344,107 @@ export default function BlogPanel() {
         </Modal>
       )}
 
-      {/* ── Image Insert Modal ── */}
+      {/* ── Image Insert / Edit Modal ── */}
       {showImageModal && (
-        <Modal title="Insert Image" onClose={() => { setShowImageModal(false); setImageFile(null); setImageCaption(""); }}>
-          <Field label="Select Image File">
-            <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0])}
-              className="w-full text-sm text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer" />
-            {imageFile && <p className="text-xs text-emerald-600 mt-1">Selected: {imageFile.name}</p>}
+        <Modal
+          title={isEditingImage ? "Edit Image Details" : "Insert Image"}
+          onClose={closeImageModal}
+          maxWidth="max-w-lg"
+        >
+          {imagePreview && (
+            <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+              <img
+                src={imagePreview}
+                alt={imageMeta.alt || "Selected preview"}
+                title={imageMeta.title || ""}
+                className="w-full max-h-48 object-contain mx-auto"
+              />
+            </div>
+          )}
+
+          <Field label={isEditingImage ? "Replace Image File (optional)" : "Select Image File *"}>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageFileSelect}
+              className="w-full text-sm text-slate-500 border border-slate-300 p-2 rounded-lg bg-slate-50 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#0f172a] file:text-white hover:file:bg-slate-700 cursor-pointer"
+            />
+            {imageFile && (
+              <p className="text-xs text-emerald-600 mt-1">Selected: {imageFile.name}</p>
+            )}
           </Field>
-          <Field label="Caption (optional)">
-            <input type="text" value={imageCaption} onChange={(e) => setImageCaption(e.target.value)} placeholder="Image caption shown below..." className="field-input" />
+
+          <Field label="Image File Name">
+            <div className="flex items-center bg-slate-50 border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-[#fc8f41]">
+              <input
+                type="text"
+                value={imageMeta.fileName}
+                onChange={(e) => setImageMeta((p) => ({ ...p, fileName: e.target.value }))}
+                placeholder="e.g. startup-registration-process"
+                className="flex-1 bg-transparent px-3 py-2 text-sm text-slate-800 outline-none"
+              />
+              {imageFile && (
+                <span className="text-slate-400 text-xs px-2.5 whitespace-nowrap">
+                  .{getFileExtension(imageFile.name)}
+                </span>
+              )}
+            </div>
           </Field>
+
+          <Field label="Alt Text">
+            <input
+              type="text"
+              value={imageMeta.alt}
+              onChange={(e) => setImageMeta((p) => ({ ...p, alt: e.target.value }))}
+              placeholder="Describe the image for SEO & screen readers..."
+              className="field-input"
+            />
+          </Field>
+
+          <Field label="Image Title">
+            <input
+              type="text"
+              value={imageMeta.title}
+              onChange={(e) => setImageMeta((p) => ({ ...p, title: e.target.value }))}
+              placeholder="Image title (shown on hover)..."
+              className="field-input"
+            />
+          </Field>
+
+          <Field label="Image Description">
+            <textarea
+              value={imageMeta.description}
+              onChange={(e) => setImageMeta((p) => ({ ...p, description: e.target.value }))}
+              placeholder="Detailed image description / caption shown below image..."
+              rows={3}
+              className="field-input resize-none"
+            />
+          </Field>
+
           <div className="flex gap-3 pt-2">
-            <button onClick={() => { setShowImageModal(false); setImageFile(null); setImageCaption(""); }} className="flex-1 py-2.5 border border-slate-300 text-slate-600 font-semibold text-sm rounded-xl hover:bg-slate-50 transition cursor-pointer">Cancel</button>
-            <button onClick={insertImage} disabled={!imageFile || imageUploading} className="flex-1 py-2.5 bg-[#fc8f41] text-white font-bold text-sm rounded-xl hover:bg-orange-500 transition disabled:opacity-50 cursor-pointer">
-              {imageUploading ? "Uploading..." : "Insert Image"}
+            {isEditingImage && (
+              <button
+                type="button"
+                onClick={removeEditingImage}
+                className="px-4 py-2.5 bg-red-50 text-red-600 border border-red-200 font-semibold text-sm rounded-xl hover:bg-red-100 transition cursor-pointer"
+              >
+                Remove
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={closeImageModal}
+              className="flex-1 py-2.5 border border-slate-300 text-slate-600 font-semibold text-sm rounded-xl hover:bg-slate-50 transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={insertImage}
+              disabled={(!isEditingImage && !imageFile) || imageUploading}
+              className="flex-1 py-2.5 bg-[#fc8f41] text-white font-bold text-sm rounded-xl hover:bg-orange-500 transition disabled:opacity-50 cursor-pointer"
+            >
+              {imageUploading ? "Uploading..." : isEditingImage ? "Update Image" : "Insert Image"}
             </button>
           </div>
         </Modal>
@@ -1127,7 +1496,8 @@ export default function BlogPanel() {
         .blog-editor i,  .blog-editor em { font-style:italic; }
         .blog-editor u  { text-decoration:underline; }
         .blog-editor .blog-figure { margin:1.2rem 0; }
-        .blog-editor .blog-img { width:100%; border-radius:0.75rem; border:1px solid #e2e8f0; }
+        .blog-editor .blog-img { width:100%; border-radius:0.75rem; border:1px solid #e2e8f0; cursor:pointer; transition:box-shadow 0.15s; }
+        .blog-editor .blog-img:hover { box-shadow:0 0 0 3px rgba(252,143,65,0.35); }
         .blog-editor .blog-figcaption { text-align:center; font-size:0.85rem; color:#64748b; margin-top:0.35rem; }
       `}</style>
     </div>
@@ -1176,11 +1546,26 @@ function StatCard({ label, value, color }) {
   );
 }
 
-function Modal({ title, children, onClose }) {
+function Modal({ title, children, onClose, maxWidth = "max-w-sm" }) {
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full space-y-4">
-        <h3 className="font-bold text-slate-900 text-lg">{title}</h3>
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center px-4 py-6"
+      onClick={(e) => { if (e.target === e.currentTarget && onClose) onClose(); }}
+    >
+      <div className={`bg-white rounded-2xl shadow-2xl p-6 ${maxWidth} w-full max-h-[90vh] overflow-y-auto space-y-4`}>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="font-bold text-slate-900 text-lg">{title}</h3>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close modal"
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer text-lg leading-none"
+            >
+              ×
+            </button>
+          )}
+        </div>
         {children}
       </div>
     </div>
