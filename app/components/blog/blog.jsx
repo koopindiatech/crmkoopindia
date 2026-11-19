@@ -41,6 +41,13 @@ function getFileExtension(fileName = "") {
   return parts.length > 1 ? parts.pop().toLowerCase().replace(/[^a-z0-9]/g, "") : "png";
 }
 
+function formatUrl(url = "") {
+  const trimmed = String(url).trim();
+  if (!trimmed) return "";
+  if (/^(https?:\/\/|\/|#|mailto:|tel:)/i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 const CATEGORIES = [
   "Business", "Startup", "Finance & Taxation",
   "Legal & Compliance", "Technology", "Marketing & Growth",
@@ -54,7 +61,7 @@ const EMPTY_FORM = {
   title: "", slug: "", author: "", description: "", date: "",
   metaTitle: "", metaDescription: "", focusKeywords: "", categories: [],
   featuredImageFileName: "", featuredImageAlt: "",
-  featuredImageTitle: "", featuredImageDescription: "",
+  featuredImageTitle: "", featuredImageDescription: "", featuredImageLink: "",
 };
 
 // ─── Keyword Analyzer ────────────────────────────────────────────────────────
@@ -138,6 +145,7 @@ export default function BlogPanel() {
     alt: "",
     title: "",
     description: "",
+    link: "",
   });
   const [isEditingImage, setIsEditingImage] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
@@ -217,7 +225,7 @@ export default function BlogPanel() {
     setIsEditingImage(false);
     setImageFile(null);
     setImagePreview(null);
-    setImageMeta({ fileName: "", alt: "", title: "", description: "" });
+    setImageMeta({ fileName: "", alt: "", title: "", description: "", link: "" });
     setShowImageModal(true);
   };
 
@@ -228,7 +236,7 @@ export default function BlogPanel() {
     setShowImageModal(false);
     setImageFile(null);
     setImagePreview(null);
-    setImageMeta({ fileName: "", alt: "", title: "", description: "" });
+    setImageMeta({ fileName: "", alt: "", title: "", description: "", link: "" });
     setIsEditingImage(false);
     editingImgRef.current = null;
     setSavedRange(null);
@@ -257,13 +265,25 @@ export default function BlogPanel() {
     setImageFile(null);
     setImagePreview(imgEl.getAttribute("src") || null);
     const existingFigcaption = imgEl.closest("figure")?.querySelector("figcaption")?.textContent || "";
+    const parentLink = imgEl.closest("a");
+    const existingLink = parentLink ? (parentLink.getAttribute("href") || "") : (imgEl.getAttribute("data-link") || "");
     setImageMeta({
       fileName:    imgEl.getAttribute("data-filename") || "",
       alt:         imgEl.getAttribute("alt") || "",
       title:       imgEl.getAttribute("title") || "",
       description: imgEl.getAttribute("data-description") || existingFigcaption,
+      link:        existingLink,
     });
     setShowImageModal(true);
+  };
+
+  const handleEditorClick = (e) => {
+    const linkEl = e.target?.closest("a");
+    if (linkEl && editorRef.current?.contains(linkEl)) {
+      if (!e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+      }
+    }
   };
 
   const removeEditingImage = () => {
@@ -273,7 +293,12 @@ export default function BlogPanel() {
       if (figure && editorRef.current?.contains(figure)) {
         figure.remove();
       } else {
-        imgEl.remove();
+        const link = imgEl.closest("a");
+        if (link && editorRef.current?.contains(link)) {
+          link.remove();
+        } else {
+          imgEl.remove();
+        }
       }
       setEditorText(editorRef.current?.innerText || "");
     }
@@ -316,6 +341,7 @@ export default function BlogPanel() {
       const altText   = imageMeta.alt.trim();
       const titleText = imageMeta.title.trim();
       const descText  = imageMeta.description.trim();
+      const finalLink = formatUrl(imageMeta.link);
 
       let uploadedUrl = null;
       let finalFileName = imageMeta.fileName.trim();
@@ -332,6 +358,7 @@ export default function BlogPanel() {
             alt: altText,
             title: titleText,
             description: descText,
+            link: finalLink,
           },
         });
         uploadedUrl = await getDownloadURL(imgRef);
@@ -348,12 +375,41 @@ export default function BlogPanel() {
         if (descText) imgEl.setAttribute("data-description", descText);
         else imgEl.removeAttribute("data-description");
 
+        const parentLink = imgEl.closest("a");
+        if (finalLink) {
+          imgEl.setAttribute("data-link", finalLink);
+          if (parentLink && parentLink.closest("figure") === imgEl.closest("figure")) {
+            parentLink.setAttribute("href", finalLink);
+            parentLink.setAttribute("target", "_blank");
+            parentLink.setAttribute("rel", "noopener noreferrer");
+            parentLink.setAttribute("data-link", finalLink);
+            parentLink.classList.add("blog-img-link");
+          } else {
+            const anchor = document.createElement("a");
+            anchor.setAttribute("href", finalLink);
+            anchor.setAttribute("target", "_blank");
+            anchor.setAttribute("rel", "noopener noreferrer");
+            anchor.setAttribute("data-link", finalLink);
+            anchor.className = "blog-img-link";
+            imgEl.parentNode.insertBefore(anchor, imgEl);
+            anchor.appendChild(imgEl);
+          }
+        } else {
+          imgEl.removeAttribute("data-link");
+          if (parentLink && parentLink.closest("figure") === imgEl.closest("figure")) {
+            parentLink.parentNode.insertBefore(imgEl, parentLink);
+            parentLink.remove();
+          }
+        }
+
         const figure = imgEl.closest("figure");
         if (figure) {
           if (finalFileName) figure.setAttribute("data-filename", finalFileName);
           else figure.removeAttribute("data-filename");
           if (descText) figure.setAttribute("data-description", descText);
           else figure.removeAttribute("data-description");
+          if (finalLink) figure.setAttribute("data-link", finalLink);
+          else figure.removeAttribute("data-link");
 
           let figcaption = figure.querySelector("figcaption");
           if (descText) {
@@ -376,10 +432,17 @@ export default function BlogPanel() {
         const titleAttr = titleText ? ` title="${escapeHtml(titleText)}"` : "";
         const fileAttr  = finalFileName ? ` data-filename="${escapeHtml(finalFileName)}"` : "";
         const descAttr  = descText ? ` data-description="${escapeHtml(descText)}"` : "";
+        const linkAttr  = finalLink ? ` data-link="${escapeHtml(finalLink)}"` : "";
         const safeAlt   = escapeHtml(altText || titleText || "Blog image");
+
+        const imgTag = `<img src="${escapeHtml(uploadedUrl)}" alt="${safeAlt}"${titleAttr}${fileAttr}${descAttr}${linkAttr} class="blog-img" />`;
+        const innerContent = finalLink
+          ? `<a href="${escapeHtml(finalLink)}" target="_blank" rel="noopener noreferrer" class="blog-img-link"${linkAttr}>${imgTag}</a>`
+          : imgTag;
+
         document.execCommand(
           "insertHTML", false,
-          `<figure class="blog-figure"${fileAttr}${descAttr}><img src="${escapeHtml(uploadedUrl)}" alt="${safeAlt}"${titleAttr}${fileAttr}${descAttr} class="blog-img" />${cap}</figure><p><br /></p>`
+          `<figure class="blog-figure"${fileAttr}${descAttr}${linkAttr}>${innerContent}${cap}</figure><p><br /></p>`
         );
         setEditorText(editorRef.current?.innerText || "");
       }
@@ -422,6 +485,7 @@ export default function BlogPanel() {
       const featuredAlt   = formData.featuredImageAlt.trim();
       const featuredTitle = formData.featuredImageTitle.trim();
       const featuredDesc  = formData.featuredImageDescription.trim();
+      const featuredLink  = formatUrl(formData.featuredImageLink);
 
       if (featuredImage) {
         const ext = getFileExtension(featuredImage.name);
@@ -435,6 +499,7 @@ export default function BlogPanel() {
             alt: featuredAlt,
             title: featuredTitle,
             description: featuredDesc,
+            link: featuredLink,
           },
         });
         featuredImageUrl = await getDownloadURL(fRef);
@@ -446,6 +511,7 @@ export default function BlogPanel() {
         alt:         img.getAttribute("alt") || "",
         title:       img.getAttribute("title") || "",
         description: img.getAttribute("data-description") || img.closest("figure")?.querySelector("figcaption")?.textContent || "",
+        link:        img.closest("a")?.getAttribute("href") || img.getAttribute("data-link") || "",
       }));
 
       const payload = {
@@ -458,11 +524,13 @@ export default function BlogPanel() {
         imageAlt:         featuredAlt,
         imageTitle:       featuredTitle,
         imageDescription: featuredDesc,
+        imageLink:        featuredLink,
         featuredImageMeta: {
           fileName:    finalFeaturedFileName,
           alt:         featuredAlt,
           title:       featuredTitle,
           description: featuredDesc,
+          link:        featuredLink,
         },
         categories:    formData.categories,
         bodyContent,
@@ -527,6 +595,7 @@ export default function BlogPanel() {
       featuredImageAlt:         blog.featuredImageMeta?.alt || blog.imageAlt || "",
       featuredImageTitle:       blog.featuredImageMeta?.title || blog.imageTitle || "",
       featuredImageDescription: blog.featuredImageMeta?.description || blog.imageDescription || "",
+      featuredImageLink:        blog.featuredImageMeta?.link || blog.imageLink || "",
     });
     setFeaturedPreview(blog.imageUrl || null);
     setFeaturedImage(null);
@@ -844,6 +913,19 @@ export default function BlogPanel() {
                     rows={2}
                     className="field-input resize-none"
                   />
+                </Field>
+                <Field label="Image Link / URL (optional)">
+                  <input
+                    type="text"
+                    name="featuredImageLink"
+                    value={formData.featuredImageLink || ""}
+                    onChange={handleInputChange}
+                    placeholder="https://example.com"
+                    className="field-input"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Clicking the featured image opens this link in a new tab (target="_blank").
+                  </p>
                 </Field>
               </div>
 
@@ -1188,7 +1270,7 @@ export default function BlogPanel() {
 
                     <Sep />
 
-                    <span style={{fontSize:10, color:"#888", whiteSpace:"nowrap"}}> Text select karke Aa Size apply karo · Cursor rakhke ↑↓ se spacing adjust karo</span>
+                    <span style={{fontSize:10, color:"#888", whiteSpace:"nowrap"}}> Select text to apply font size · Place cursor to adjust block spacing</span>
 
                   </div>
 
@@ -1208,6 +1290,7 @@ export default function BlogPanel() {
                   suppressContentEditableWarning
                   onInput={() => setEditorText(editorRef.current?.innerText || "")}
                   onDoubleClick={handleEditorDoubleClick}
+                  onClick={handleEditorClick}
                   className="blog-editor min-h-[580px] p-6 outline-none"
                   style={{ lineHeight: lineSpacing, letterSpacing: `${letterSpacing}px` }}
                   data-placeholder="Start writing your blog post here...&#10;&#10;Type your content and use the toolbar above to format it:&#10;• Select text → click H1 / H2 / H3 for headings&#10;• Select text → click B for bold, I for italic&#10;• Click • List for bullet points&#10;• Click Image to insert a photo&#10;• Click Link to add a backlink"
@@ -1421,6 +1504,21 @@ export default function BlogPanel() {
             />
           </Field>
 
+          <Field label="Image Link / URL (optional)">
+            <input
+              type="text"
+              value={imageMeta.link}
+              onChange={(e) => setImageMeta((p) => ({ ...p, link: e.target.value }))}
+              placeholder="https://example.com"
+              className="field-input"
+            />
+            <p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
+              <span>🔗 Clicking the image opens the link in a new tab (</span>
+              <code className="text-slate-600 bg-slate-100 px-1 py-0.5 rounded text-[9.5px]">target="_blank"</code>
+              <span>).</span>
+            </p>
+          </Field>
+
           <div className="flex gap-3 pt-2">
             {isEditingImage && (
               <button
@@ -1496,6 +1594,7 @@ export default function BlogPanel() {
         .blog-editor i,  .blog-editor em { font-style:italic; }
         .blog-editor u  { text-decoration:underline; }
         .blog-editor .blog-figure { margin:1.2rem 0; }
+        .blog-editor .blog-img-link { display:block; text-decoration:none !important; cursor:pointer; }
         .blog-editor .blog-img { width:100%; border-radius:0.75rem; border:1px solid #e2e8f0; cursor:pointer; transition:box-shadow 0.15s; }
         .blog-editor .blog-img:hover { box-shadow:0 0 0 3px rgba(252,143,65,0.35); }
         .blog-editor .blog-figcaption { text-align:center; font-size:0.85rem; color:#64748b; margin-top:0.35rem; }
